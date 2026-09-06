@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "BAR Advanced Launcher 2 (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "BAR Advanced Launcher 2 (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
