@@ -67,16 +67,28 @@ public interface ILaunchService
     /// Engine to use when the profile does not name one — normally the Launch page's
     /// current selection.
     /// </param>
+    /// <param name="scriptPathOverride">
+    /// Runs this exact file instead of resolving the profile's script out of the library.
+    ///
+    /// Needed by Phase 6: a script recovered from an infolog lives wherever the engine
+    /// loaded it from — <c>data\_script.txt</c>, or a folder belonging to the old
+    /// launcher — and the library resolver strips directories on purpose, so a profile
+    /// alone cannot name it.
+    /// </param>
     Task<LaunchResult> LaunchAsync(
         LaunchProfile profile,
         EngineBuild? engineOverride = null,
+        string? scriptPathOverride = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Builds the command a launch would run, without starting anything. Backs the
     /// "copy full command line" button and the preview on the Launch page.
     /// </summary>
-    (EngineCommandLine? Command, string? Error) Preview(LaunchProfile profile, EngineBuild? engineOverride = null);
+    (EngineCommandLine? Command, string? Error) Preview(
+        LaunchProfile profile,
+        EngineBuild? engineOverride = null,
+        string? scriptPathOverride = null);
 
     /// <summary>Kills a tracked instance. False when it is already gone.</summary>
     bool Kill(int processId);

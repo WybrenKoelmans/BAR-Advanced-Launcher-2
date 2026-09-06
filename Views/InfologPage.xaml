@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="utf-8"?>
+<local:InfologPageBase
+    x:Class="BAR_Advanced_Launcher_2.Views.InfologPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:BAR_Advanced_Launcher_2.Views"
+    xmlns:models="using:BAR_Advanced_Launcher_2.Models"
+    xmlns:services="using:BAR_Advanced_Launcher_2.Services"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Loaded="OnLoaded"
+    Unloaded="OnUnloaded">
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Infolog" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="What the engine actually did, and the start script it ran."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Opacity="0.7" />
+            </StackPanel>
+
+            <CommandBar Grid.Column="1"
+                        DefaultLabelPosition="Right"
+                        Background="Transparent"
+                        IsOpen="False">
+                <AppBarToggleButton Label="Live"
+                                     IsChecked="{x:Bind ViewModel.IsLive, Mode=TwoWay}"
+                                     ToolTipService.ToolTip="Follow the log as the engine writes to it">
+                    <AppBarToggleButton.Icon>
+                        <FontIcon Glyph="&#xE768;" />
+                    </AppBarToggleButton.Icon>
+                </AppBarToggleButton>
+                <AppBarButton Icon="Refresh"
+                              Label="Refresh"
+                              ToolTipService.ToolTip="Re-list the log files"
+                              Command="{x:Bind ViewModel.RefreshCommand}" />
+                <AppBarButton Icon="Sync"
+                              Label="Reload"
+                              ToolTipService.ToolTip="Re-read the selected log, which the engine may still be writing"
+                              Command="{x:Bind ViewModel.ReloadCommand}" />
+                <AppBarButton Icon="Copy"
+                              Label="Copy report"
+                              ToolTipService.ToolTip="Copy a triage report: what ran, how it ended, and every error"
+                              Command="{x:Bind ViewModel.CopyReportCommand}" />
+                <AppBarButton Icon="OpenFile"
+                              Label="Open"
+                              ToolTipService.ToolTip="Open the log in the default editor"
+                              Command="{x:Bind ViewModel.OpenInEditorCommand}" />
+                <AppBarButton Icon="Folder"
+                              Label="Log folder"
+                              ToolTipService.ToolTip="Open the rotated log folder"
+                              Command="{x:Bind ViewModel.OpenLogFolderCommand}" />
+            </CommandBar>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!--
+                Log picker. The column is Auto-width and the Expander is left-aligned so
+                collapsing it shrinks down to just the header, handing its width back to
+                the log lines on the right rather than leaving a blank 300px gap.
+            -->
+            <Expander Grid.Column="0"
+                      Header="Log files"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Stretch"
+                      IsExpanded="True">
+                <Grid Width="280" RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <ListView ItemsSource="{x:Bind ViewModel.Files}"
+                              SelectedItem="{x:Bind ViewModel.SelectedFile, Mode=TwoWay}"
+                              SelectionMode="Single"
+                              BorderThickness="1"
+                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                              CornerRadius="4">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:InfologFile">
+                                <StackPanel Spacing="2" Padding="0,6">
+                                    <TextBlock Text="{x:Bind DisplayName}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind SubtitleText}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Opacity="0.6"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <TextBlock Grid.Row="1"
+                               Text="{x:Bind ViewModel.Status, Mode=OneWay}"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Opacity="0.7"
+                               TextWrapping="Wrap" />
+                </Grid>
+            </Expander>
+
+            <!-- Selected run -->
+            <Grid Grid.Column="1" RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <ProgressBar Grid.Row="0"
+                             IsIndeterminate="True"
+                             Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+
+                <!-- What this run was -->
+                <Expander Grid.Row="1"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          IsExpanded="True"
+                          Visibility="{x:Bind ViewModel.HasSummary, Mode=OneWay}">
+                    <Expander.Header>
+                        <TextBlock Text="{x:Bind ViewModel.Summary.HeadlineText, Mode=OneWay}"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    </Expander.Header>
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{x:Bind ViewModel.RunDescription, Mode=OneWay}"
+                                   Opacity="0.8"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{x:Bind ViewModel.Summary.WriteDirectory, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Opacity="0.6"
+                                   TextWrapping="Wrap" />
+
+                        <InfoBar IsOpen="{x:Bind ViewModel.HasFailure, Mode=OneWay}"
+                                 IsClosable="False"
+                                 Severity="Error"
+                                 Title="The engine stopped on an error"
+                                 Message="{x:Bind ViewModel.FailureText, Mode=OneWay}" />
+                    </StackPanel>
+                </Expander>
+
+                <!-- Recovered start script -->
+                <Expander Grid.Row="2"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          IsExpanded="True"
+                          Visibility="{x:Bind ViewModel.Recovered, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}">
+                    <Expander.Header>
+                        <TextBlock Text="Last start script"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    </Expander.Header>
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{x:Bind ViewModel.Recovered.OriginText, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Opacity="0.6" />
+                        <TextBlock Text="{x:Bind ViewModel.Recovered.DetailText, Mode=OneWay}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{x:Bind ViewModel.Recovered.Path, Mode=OneWay}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Opacity="0.6"
+                                   IsTextSelectionEnabled="True"
+                                   TextWrapping="Wrap" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Re-run"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Command="{x:Bind ViewModel.RerunCommand}"
+                                    ToolTipService.ToolTip="Run it again on the engine build this log came from" />
+                            <Button Content="Import to library…"
+                                    Command="{x:Bind ViewModel.ImportCommand}"
+                                    ToolTipService.ToolTip="Keep this run as an editable start script" />
+                            <Button Content="Diff"
+                                    Command="{x:Bind ViewModel.DiffCommand}"
+                                    ToolTipService.ToolTip="Compare with the library copy" />
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Diff against the library -->
+                <Expander Grid.Row="3"
+                          HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          IsExpanded="True"
+                          Visibility="{x:Bind ViewModel.HasComparison, Mode=OneWay}">
+                    <Expander.Header>
+                        <TextBlock Text="{x:Bind ViewModel.Comparison.HeaderText, Mode=OneWay}"
+                                   TextWrapping="Wrap" />
+                    </Expander.Header>
+                    <ListView ItemsSource="{x:Bind ViewModel.DiffLines}"
+                              MaxHeight="220"
+                              SelectionMode="None"
+                              FontFamily="Consolas">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="services:DiffLine">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{x:Bind Marker}"
+                                               Width="12"
+                                               Foreground="{x:Bind Kind, Converter={StaticResource DiffKindBrushConverter}}" />
+                                    <TextBlock Text="{x:Bind Text}"
+                                               Foreground="{x:Bind Kind, Converter={StaticResource DiffKindBrushConverter}}"
+                                               TextWrapping="NoWrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Expander>
+
+                <!-- Filter -->
+                <Grid Grid.Row="4" RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBox PlaceholderText="Search the log"
+                                 Width="240"
+                                 Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <ComboBox ItemsSource="{x:Bind ViewModel.SeverityLevels}"
+                                  SelectedItem="{x:Bind ViewModel.MinimumSeverity, Mode=TwoWay}"
+                                  Width="120"
+                                  ToolTipService.ToolTip="Show this severity and worse" />
+                        <ComboBox ItemsSource="{x:Bind ViewModel.Sections}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedSection, Mode=TwoWay}"
+                                  Width="200"
+                                  ToolTipService.ToolTip="Show one log section only" />
+                        <Button Content="Problems only" Command="{x:Bind ViewModel.ShowProblemsOnlyCommand}" />
+                        <Button Content="Clear" Command="{x:Bind ViewModel.ClearFilterCommand}" />
+                        <Button Content="Copy shown"
+                                Command="{x:Bind ViewModel.CopyShownLinesCommand}"
+                                ToolTipService.ToolTip="Copy the lines currently listed" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <ListView x:Name="LinesListView"
+                                  ItemsSource="{x:Bind ViewModel.Lines}"
+                                  SelectionMode="Extended"
+                                  FontFamily="Consolas"
+                                  FontSize="12"
+                                  BorderThickness="1"
+                                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                  CornerRadius="4"
+                                  Padding="0,0,0,16"
+                                  ScrollViewer.HorizontalScrollMode="Enabled"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  Loaded="OnLinesListViewLoaded">
+                            <!--
+                                A live-tailed log can append many lines a second; the default
+                                per-item entrance transition would make each one visibly fade
+                                or slide in, which reads as "the log is animating" rather than
+                                just updating.
+                            -->
+                            <ListView.ItemContainerTransitions>
+                                <TransitionCollection />
+                            </ListView.ItemContainerTransitions>
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="8,1" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:InfologLine">
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="56" />
+                                            <ColumnDefinition Width="68" />
+                                            <ColumnDefinition Width="48" />
+                                            <ColumnDefinition Width="38" />
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{x:Bind NumberText}"
+                                                   Opacity="0.4"
+                                                   TextAlignment="Right" />
+                                        <TextBlock Grid.Column="1" Text="{x:Bind TimeText}" Opacity="0.5" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{x:Bind FrameText}"
+                                                   Opacity="0.5"
+                                                   TextAlignment="Right" />
+                                        <TextBlock Grid.Column="3"
+                                                   Text="{x:Bind SeverityText}"
+                                                   Foreground="{x:Bind Severity, Converter={StaticResource InfologSeverityBrushConverter}}" />
+                                        <TextBlock Grid.Column="4"
+                                                   Text="{x:Bind SectionText}"
+                                                   Opacity="0.55"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="5"
+                                                   Text="{x:Bind Message}"
+                                                   Foreground="{x:Bind Severity, Converter={StaticResource InfologSeverityBrushConverter}}"
+                                                   TextWrapping="NoWrap" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <Button x:Name="JumpToNewestButton"
+                                Content="↓ Scroll to bottom"
+                                Style="{StaticResource AccentButtonStyle}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Bottom"
+                                Margin="0,0,0,12"
+                                CornerRadius="16"
+                                Visibility="Collapsed"
+                                ToolTipService.ToolTip="Jump to the end of the log"
+                                Click="OnJumpToNewestClick" />
+                    </Grid>
+                </Grid>
+
+                <TextBlock Grid.Row="5"
+                           Text="{x:Bind ViewModel.LinesStatus, Mode=OneWay}"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Opacity="0.7"
+                           TextWrapping="Wrap" />
+            </Grid>
+        </Grid>
+    </Grid>
+</local:InfologPageBase>

@@ -15,6 +15,7 @@ public sealed class NavigationService : INavigationService
         [PageKeys.Scripts] = typeof(ScriptsPage),
         [PageKeys.Content] = typeof(ContentPage),
         [PageKeys.History] = typeof(HistoryPage),
+        [PageKeys.Infolog] = typeof(InfologPage),
         [PageKeys.Log] = typeof(LogPage),
         [PageKeys.Settings] = typeof(SettingsPage),
     };

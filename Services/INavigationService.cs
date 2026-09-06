@@ -25,6 +25,7 @@ public static class PageKeys
     public const string Scripts = "scripts";
     public const string Content = "content";
     public const string History = "history";
+    public const string Infolog = "infolog";
     public const string Log = "log";
     public const string Settings = "settings";
 }

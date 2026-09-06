@@ -18,6 +18,7 @@ public sealed class LaunchService : ILaunchService
     private readonly IArchiveCatalog _catalog;
     private readonly IStartScriptStore _scripts;
     private readonly IEngineEnvironment _environment;
+    private readonly ILaunchHistoryStore _history;
 
     private readonly object _gate = new();
     private readonly List<RunningInstance> _instances = new();
@@ -27,13 +28,15 @@ public sealed class LaunchService : ILaunchService
         IInstallationContext installation,
         IArchiveCatalog catalog,
         IStartScriptStore scripts,
-        IEngineEnvironment environment)
+        IEngineEnvironment environment,
+        ILaunchHistoryStore history)
     {
         _logger = logger;
         _installation = installation;
         _catalog = catalog;
         _scripts = scripts;
         _environment = environment;
+        _history = history;
     }
 
     public IReadOnlyList<RunningInstance> Instances
@@ -51,26 +54,28 @@ public sealed class LaunchService : ILaunchService
 
     public (EngineCommandLine? Command, string? Error) Preview(
         LaunchProfile profile,
-        EngineBuild? engineOverride = null)
+        EngineBuild? engineOverride = null,
+        string? scriptPathOverride = null)
     {
-        (EngineCommandLine? command, string? error) = Resolve(profile, engineOverride);
-        return (command, error);
+        ResolvedLaunch resolved = Resolve(profile, engineOverride, scriptPathOverride);
+        return (resolved.Command, resolved.Error);
     }
 
-    public Task<LaunchResult> LaunchAsync(
+    public async Task<LaunchResult> LaunchAsync(
         LaunchProfile profile,
         EngineBuild? engineOverride = null,
+        string? scriptPathOverride = null,
         CancellationToken cancellationToken = default)
     {
-        (EngineCommandLine? command, string? error) = Resolve(profile, engineOverride);
+        ResolvedLaunch resolved = Resolve(profile, engineOverride, scriptPathOverride);
 
-        if (command is null)
+        if (resolved.Command is not { } command)
         {
-            _logger.LogWarning("Cannot launch '{Profile}': {Error}", profile.Name, error);
-            return Task.FromResult(LaunchResult.Fail(error ?? "Unknown error."));
+            _logger.LogWarning("Cannot launch '{Profile}': {Error}", profile.Name, resolved.Error);
+            return LaunchResult.Fail(resolved.Error ?? "Unknown error.");
         }
 
-        EngineBuild? engine = ResolveEngine(profile, engineOverride);
+        EngineBuild? engine = resolved.Engine;
 
         var startInfo = new ProcessStartInfo
         {
@@ -108,7 +113,7 @@ public sealed class LaunchService : ILaunchService
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or ObjectDisposedException)
         {
             _logger.LogError(ex, "Could not start {Executable}.", command.ExecutablePath);
-            return Task.FromResult(LaunchResult.Fail($"Could not start the engine: {ex.Message}"));
+            return LaunchResult.Fail($"Could not start the engine: {ex.Message}");
         }
 
         var instance = new RunningInstance
@@ -126,7 +131,10 @@ public sealed class LaunchService : ILaunchService
             _instances.Insert(0, instance);
         }
 
-        TrackExit(process, instance);
+        LaunchRecord record = await BuildRecordAsync(resolved, instance, cancellationToken).ConfigureAwait(false);
+        _history.Record(record);
+
+        TrackExit(process, instance, record);
 
         _logger.LogInformation(
             "Launched '{Profile}' as pid {Pid}: {CommandLine}",
@@ -135,7 +143,65 @@ public sealed class LaunchService : ILaunchService
             command.ToDisplayString());
 
         InstancesChanged?.Invoke(this, EventArgs.Empty);
-        return Task.FromResult(LaunchResult.Ok(instance));
+        return LaunchResult.Ok(instance);
+    }
+
+    /// <summary>
+    /// Captures everything the History page needs, including the script's text as it is
+    /// right now.
+    ///
+    /// The snapshot is taken here rather than lazily because this is the only moment it
+    /// is true: the point of storing it is to notice later that the file has changed
+    /// since the run, and a copy read afterwards could not tell.
+    /// </summary>
+    private async Task<LaunchRecord> BuildRecordAsync(
+        ResolvedLaunch resolved,
+        RunningInstance instance,
+        CancellationToken cancellationToken)
+    {
+        return new LaunchRecord
+        {
+            StartedAt = instance.StartedAt,
+            ProfileName = instance.ProfileName,
+            EngineName = instance.EngineName,
+            Mode = instance.Mode,
+            ExecutablePath = instance.Command.ExecutablePath,
+            Arguments = instance.Command.Arguments.ToList(),
+            ScriptPath = resolved.ScriptPath,
+            ScriptSnapshot = await ReadSnapshotAsync(resolved.ScriptPath, cancellationToken).ConfigureAwait(false),
+            InfologPath = _installation.Current is { } installation
+                ? Path.Combine(LaunchCommandBuilder.ResolveWriteDirectory(resolved.Profile!, installation), "infolog.txt")
+                : null,
+
+            // The resolved profile, not the one passed in: a menu launch has had its
+            // Chobby build filled in by now, and replaying "whatever menu is newest" a
+            // month later is not replaying this run.
+            Profile = resolved.Profile!.Clone(),
+        };
+    }
+
+    private async Task<string?> ReadSnapshotAsync(string? scriptPath, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(scriptPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = new FileStream(
+                scriptPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            // Worth a debug line and nothing more: the launch itself is unaffected, and
+            // the engine will report a script it cannot read far more clearly than we can.
+            _logger.LogDebug(ex, "Could not snapshot the start script at {Path}.", scriptPath);
+            return null;
+        }
     }
 
     public bool Kill(int processId)
@@ -157,7 +223,7 @@ public sealed class LaunchService : ILaunchService
     }
 
     /// <summary>Records the exit code so a crash can be surfaced (PLAN.md §6.7).</summary>
-    private void TrackExit(Process process, RunningInstance instance)
+    private void TrackExit(Process process, RunningInstance instance, LaunchRecord record)
     {
         try
         {
@@ -174,6 +240,10 @@ public sealed class LaunchService : ILaunchService
                 {
                     instance.ExitCode = null;
                 }
+
+                record.ExitedAt = instance.ExitedAt;
+                record.ExitCode = instance.ExitCode;
+                _history.Update(record);
 
                 if (instance.ExitCode is not (null or 0))
                 {
@@ -206,21 +276,38 @@ public sealed class LaunchService : ILaunchService
     }
 
     /// <summary>
+    /// A profile resolved against the current install — everything the caller needs to
+    /// both start the process and describe it afterwards.
+    /// </summary>
+    private readonly record struct ResolvedLaunch(
+        EngineCommandLine? Command,
+        string? Error,
+        EngineBuild? Engine,
+        string? ScriptPath,
+        LaunchProfile? Profile)
+    {
+        public static ResolvedLaunch Fail(string error) => new(null, error, null, null, null);
+    }
+
+    /// <summary>
     /// Resolves a profile against the current install: engine, menu name and script
     /// path, then hands off to the pure argument builder.
     /// </summary>
-    private (EngineCommandLine? Command, string? Error) Resolve(LaunchProfile profile, EngineBuild? engineOverride)
+    private ResolvedLaunch Resolve(
+        LaunchProfile profile,
+        EngineBuild? engineOverride,
+        string? scriptPathOverride = null)
     {
         BarInstallation? installation = _installation.Current;
         if (installation is null)
         {
-            return (null, "No Beyond All Reason installation is selected.");
+            return ResolvedLaunch.Fail("No Beyond All Reason installation is selected.");
         }
 
         EngineBuild? engine = ResolveEngine(profile, engineOverride);
         if (engine is null)
         {
-            return (null, profile.EngineName is null
+            return ResolvedLaunch.Fail(profile.EngineName is null
                 ? "No engine build is selected."
                 : $"Engine '{profile.EngineName}' was not found in this installation.");
         }
@@ -234,7 +321,8 @@ public sealed class LaunchService : ILaunchService
             MenuArchive? menu = _catalog.Index.Menus.FirstOrDefault();
             if (menu is null)
             {
-                return (null, "No Chobby menu was found in the archive cache. Open the Content page to build it.");
+                return ResolvedLaunch.Fail(
+                    "No Chobby menu was found in the archive cache. Open the Content page to build it.");
             }
 
             resolved.MenuName = menu.Name;
@@ -243,22 +331,31 @@ public sealed class LaunchService : ILaunchService
         string? scriptPath = null;
         if (resolved.Mode is LaunchMode.Script or LaunchMode.Headless or LaunchMode.Dedicated)
         {
-            if (string.IsNullOrWhiteSpace(resolved.ScriptFileName))
+            if (!string.IsNullOrWhiteSpace(scriptPathOverride))
             {
-                return (null, "This profile has no start script selected.");
+                // A recovered script, which lives outside the library by definition. Left
+                // exactly as given: the builder quotes it, and rewriting a path is how the
+                // "from: All" corruption of PLAN.md §2.4 happened in the first place.
+                scriptPath = scriptPathOverride;
             }
-
-            scriptPath = _scripts.ResolvePath(resolved.ScriptFileName);
+            else if (string.IsNullOrWhiteSpace(resolved.ScriptFileName))
+            {
+                return ResolvedLaunch.Fail("This profile has no start script selected.");
+            }
+            else
+            {
+                scriptPath = _scripts.ResolvePath(resolved.ScriptFileName);
+            }
         }
         else if (resolved.Mode == LaunchMode.Skirmish)
         {
-            return (null, "Skirmish mode is not implemented yet; use a saved script for now.");
+            return ResolvedLaunch.Fail("Skirmish mode is not implemented yet; use a saved script for now.");
         }
 
         (EngineCommandLine? command, LaunchValidationError? error) =
             LaunchCommandBuilder.TryBuild(resolved, installation, engine, scriptPath);
 
-        return (command, error?.Message);
+        return new ResolvedLaunch(command, error?.Message, engine, scriptPath, resolved);
     }
 
     /// <summary>

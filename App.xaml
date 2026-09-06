@@ -12,6 +12,8 @@
             </ResourceDictionary.MergedDictionaries>
 
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+            <converters:InfologSeverityBrushConverter x:Key="InfologSeverityBrushConverter" />
+            <converters:DiffKindBrushConverter x:Key="DiffKindBrushConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

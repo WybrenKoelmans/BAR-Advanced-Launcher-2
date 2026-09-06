@@ -1,4 +1,5 @@
 using BAR_Advanced_Launcher_2.ViewModels;
+using Microsoft.UI.Xaml;
 
 namespace BAR_Advanced_Launcher_2.Views;
 
@@ -11,4 +12,7 @@ public abstract class HistoryPageBase : ViewModelPage<HistoryViewModel>;
 public sealed partial class HistoryPage : HistoryPageBase
 {
     public HistoryPage() => InitializeComponent();
+
+    private void OnLoaded(object sender, RoutedEventArgs e) =>
+        _ = ViewModel.LoadCommand.ExecuteAsync(null);
 }

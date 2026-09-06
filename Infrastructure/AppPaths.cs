@@ -21,6 +21,9 @@ public static class AppPaths
     /// <summary>Memoised parse of ArchiveCache*.lua — see PLAN.md §5.4.</summary>
     public static string ArchiveIndexFile => Path.Combine(Root, "index.json");
 
+    /// <summary>Past launches, for replay — see PLAN.md §6.1.</summary>
+    public static string HistoryFile => Path.Combine(Root, "history.json");
+
     /// <summary>
     /// The script library. The old launcher's folder is deliberately not imported or
     /// shared — the new library starts empty (PLAN.md §9 Q4).

@@ -23,6 +23,7 @@ public sealed partial class LaunchViewModel : ObservableObject
     private readonly ISettingsService _settings;
     private readonly IShellService _shell;
     private readonly IDialogService _dialogs;
+    private readonly INavigationService _navigation;
     private readonly IUiDispatcher _dispatcher;
     private readonly ILogger<LaunchViewModel> _logger;
 
@@ -229,6 +230,7 @@ public sealed partial class LaunchViewModel : ObservableObject
         ISettingsService settings,
         IShellService shell,
         IDialogService dialogs,
+        INavigationService navigation,
         IUiDispatcher dispatcher,
         ILogger<LaunchViewModel> logger)
     {
@@ -240,6 +242,7 @@ public sealed partial class LaunchViewModel : ObservableObject
         _settings = settings;
         _shell = shell;
         _dialogs = dialogs;
+        _navigation = navigation;
         _dispatcher = dispatcher;
         _logger = logger;
 
@@ -317,7 +320,14 @@ public sealed partial class LaunchViewModel : ObservableObject
         {
             LaunchProblem = result.Error;
             await _dialogs.ShowMessageAsync("Could not launch", result.Error ?? "Unknown error.");
+            return;
         }
+
+        // The infolog is the first place to look once something is running, so the page
+        // that shows it is where a launch should land — handed over as a navigation
+        // parameter, in the same shape the History page hands over a file, so the
+        // Infolog page can pick up its own log once the engine has written it.
+        _navigation.NavigateTo(PageKeys.Infolog, result.Instance);
     }
 
     [RelayCommand]

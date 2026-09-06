@@ -453,28 +453,77 @@ Templates to ship: *1v1 vs AI*, *AI vs AI (spectate)*, *Empty sandbox*,
 2. `<root>\infolog.txt` (non-isolated runs),
 3. `data\log\*_infolog.txt` (rotated history).
 
-It extracts:
+Every marker below was read out of the real logs in this install, not out of
+documentation. The engine has no log format specification, so the only ground
+truth is its own output.
 
-- **Start script path** from `[StartScript] Loading StartScript from: <path>`.
-  If the value does not resolve to an existing file, mark it *unresolved* — this
-  is the "`… from: All`" case from §2.4, and it must not be presented as a real
-  script.
-- **Chobby-generated script**: if the run was a `--menu` launch there is no such
-  line, so fall back to `data\_script.txt`, whose `mtime` tells us when Chobby
-  last wrote it. This is how you capture a game that was set up in the menu.
-- Supporting facts worth surfacing: engine build, write-dir, isolation on/off,
-  `gametype`, `mapname`, and any `[Error]` / `Exception` lines.
+| Fact | Line the parser matches |
+| --- | --- |
+| Start script | `[StartScript] Loading StartScript from: <path>` |
+| Engine version | `Spring Engine Version: 2026.07.01-61-g680e33a verify-ed25519` |
+| Build environment | `Build Environment: msvc++ version 1951` |
+| Write dir | `[DataDirLocater::FindWriteableDataDir] using writeable data-directory "…"` |
+| Config source | `Using writeable configuration source: "…"` |
+| Isolation | `[DataDirLocater::Check] Isolation Mode!` |
+| Engine folder | `using read-only data directory: …/data/engine/<name>/` |
+| What ran | `infologVersionTags:engine=…,game=…,lobby=…,map=…` |
+| Why it stopped | `Fatal: [ExitSpringProcess] errorMsg="…" msgCaption="…"` |
+| Clean exit | `[SpringApp::Kill]` |
+
+Two of those deserve comment. **`infologVersionTags`** is one line carrying the
+engine, game, Chobby build and map — it answers "what was this run" on its own,
+but the *game* writes it, so a run that died during loading has none, which is
+why the engine banner is parsed as well. And **`[ExitSpringProcess]`** is the
+engine's own account of its death, covering crashes, aborts, out-of-memory, a
+missing dependent archive — and `errorMsg="Setup-script does not exist in given
+location: All"`, which is the "`from: All`" bug of §2.4 seen from the other end.
+Its message spans four lines for a crash and one for a refused start.
+
+**Start script resolution.** If the logged path does not resolve to an existing
+file, mark it *unresolved* — §2.4 again — and say why: an unquoted path is
+truncated at the first space, so the value is probably part of one. It must never
+be presented as a real script.
+
+**Chobby-generated script**: a `--menu` launch logs no such line at all, so fall
+back to `data\_script.txt`, which Chobby rewrites on each skirmish and whose
+`mtime` says when. This is how a game set up in the lobby is captured.
 
 The UI then offers:
 
-- **Re-run** — launch it again as-is.
-- **Import to library** — copy the file contents into the script library under a
-  chosen name, so a Chobby-configured match becomes a reusable dev script. This
-  is the single most valuable feature here: it turns the menu into a script
-  authoring tool.
-- **Diff** — compare against the library copy if a script of that name exists.
+- **Re-run** — launch it again, on the engine build the log names and with the
+  isolation flag the log shows, so it reproduces the run rather than merely
+  running the file.
+- **Import to library** — copy the contents in under a chosen name, so a
+  Chobby-configured match becomes a reusable dev script. This is the single most
+  valuable feature here: it turns the menu into a script authoring tool.
+- **Diff** — against the library copy. Where the run loaded a library file, that
+  is the copy, and the diff answers the question a re-run raises: does the file
+  still say what it said then?
 
-Read logs with `FileShare.ReadWrite` — the engine may still hold the handle.
+**Reading constraints, all measured here rather than assumed:**
+
+- Logs are opened `FileShare.ReadWrite | Delete`. The engine holds its log open
+  for the whole run, and the most interesting log is usually the one still being
+  written.
+- `data\log` on this machine holds **773 files, 378 MB, largest 42 MB**. So the
+  file list is built from a directory listing alone and never opens anything, a
+  summary is one streaming pass that keeps only counters, and the line view is
+  always filtered and capped. Measured: 42 MB / 484k lines summarised in ~130 ms.
+- One rotated log here is **not valid UTF-8**. Decoding replaces the bad bytes
+  rather than throwing: a viewer that refuses to open a log is worse than one
+  showing a replacement character in a translated unit name. The live logs carry
+  a BOM and the rotated ones do not.
+- The rotated file names carry a timestamp, and **the two schemes the engine has
+  used disagree about the zone**: `2026-05-02_15-18-20-753_infolog.txt` is a
+  minute after its own last write in local time, while
+  `20260502123133_infolog.txt` is three hours behind its last write, i.e. UTC.
+  So ordering and display both use the file system's write time, and the name is
+  shown as a name. Sorting on the embedded stamp would interleave the two eras
+  wrongly, and showing both puts two different times on one row.
+- **A run is matched to its log by write time**, not by the path recorded at
+  launch: the engine writes one `infolog.txt` per write directory and rotates the
+  previous one aside on its next start, so a stored path stops being that run's
+  log as soon as anything else launches.
 
 ### 5.9 Launch profiles
 
@@ -532,14 +581,18 @@ hand-editable.
 
 Beyond the requested scope. Ordered by value-for-effort.
 
-1. **Launch history.** Every launch recorded (engine, script snapshot, args,
-   exit code, duration, infolog path). One-click replay of any past run. A dev
-   relaunches the same combination dozens of times a day; this is the feature
-   that saves the most clicks.
+1. ~~**Launch history.**~~ Built with Phase 6. Every launch is recorded — engine,
+   arguments, script path and a snapshot of its text, exit code, duration — and
+   replayed through the same validation a fresh launch gets, so a moved install
+   is reported rather than producing a command that cannot work. The snapshot is
+   what lets the page say "the script has been edited since this run, so a replay
+   will not reproduce it exactly".
 2. ~~**Launch profiles.**~~ Promoted out of this list and specified in §5.9;
    built, with management on the Launch page.
-3. **Live infolog viewer.** Tail `data\infolog.txt` while the game runs, with
-   error highlighting and filtering. Removes the alt-tab-to-notepad loop.
+3. **Live infolog viewer.** Phase 6 built the viewer — severity colouring,
+   severity/section/text filtering, 484k-line logs — but not the *live* part.
+   Tailing `data\infolog.txt` while the game runs is still open, and is the
+   remaining half of removing the alt-tab-to-notepad loop.
 4. **Multi-instance / isolated sandboxes.** Per `SUMMARY.md` §2: create
    `data2`, `data3`, symlink the read-only asset folders (`engine`, `games`,
    `maps`, `pool`, `packages`), copy the mutable configs, and launch with a
@@ -568,8 +621,11 @@ Beyond the requested scope. Ordered by value-for-effort.
 10. **Command-line passthrough.** A free-text extra-arguments box per profile,
     plus a "copy full command line" button for pasting into a terminal or a bug
     report.
-11. **Crash triage.** After a non-zero exit, scan the infolog for the last error
-    block and offer "copy report" with engine, script, and stack.
+11. ~~**Crash triage.**~~ Built with Phase 6 as the Infolog page's **Copy report**:
+    what ran, how it ended, the engine's own `[ExitSpringProcess]` message and
+    caption, and every error line — on the clipboard in one press. The errors are
+    re-read rather than taken from the filtered view, so a report cannot silently
+    reflect a section filter.
 
 ---
 
@@ -579,11 +635,12 @@ Beyond the requested scope. Ordered by value-for-effort.
 
 | Page | Purpose |
 | --- | --- |
-| **Launch** | Launch button and command preview, install header, **profile section** (§5.9), what-to-run pickers, run options, running instances, "last run" card with Re-run / Import |
+| **Launch** | Launch button and command preview, install header, **profile section** (§5.9), what-to-run pickers, run options, running instances |
 | **Scripts** | Library list, default marker, editor (form + raw tabs) |
 | **Content** | Maps / Games / Engines browsers with detail panes |
-| **History** | Past launches, replay, jump to infolog |
-| **Log** | App log + live engine infolog tail |
+| **History** | Past launches, replay, jump to the log that run wrote |
+| **Infolog** | Log picker, run summary, recovered start script with Re-run / Import / Diff, filtered line view, copy report |
+| **Log** | App log. The engine's log lives on the Infolog page |
 | **Settings** | Installs, paths, downloader env vars, theme |
 
 Keep the existing `MicaBackdrop`. Use `InfoBar` for recoverable problems (no
@@ -677,7 +734,8 @@ map thumbnails → springsettings editor.
 | 4 — Script library | **Done.** `IStartScriptSerializer` over the pseudo-INI format (arbitrary nesting, comments preserved, errors carry a line number), `StartScriptDocument` + typed `StartScriptModel`, `IStartScriptFactory` with the four templates, full store CRUD with delete-to-recycle-bin and atomic BOM-free saves, Scripts page with a monospace raw editor and live parse errors. Round-trips all three real specimens on this machine. Verified live: a script created from a template launched and the engine gave team 1 to `BARb` `stable`. |
 | Run options (post-Phase 4) | **Done.** `--isolation`, `--safemode`, `--only-local`, `--window`/`--fullscreen`, `--config` and the `--write-dir` override are per-profile controls on the Launch page, with an isolation checkbox on the Scripts page too. Switch names and descriptions were read out of `spring.exe`'s own option table; the four client switches are dropped for Dedicated, whose binary does not register them. Verified against a real engine run: `--config` moved the writeable configuration source to a path with a space in it, `--window` produced `windowed::decorated` where the same run without it gave `fullscreen::exclusive`, `--write-dir` put the infolog in the chosen folder, and `--isolation` cut `Documents\My Games\Spring` out of the read-only data directories. Also fixed here: text saved from the raw editor kept WinUI's bare-CR line endings, so a hand-edited script landed on disk as one long line. |
 | Profile management (post-Phase 4) | **Done.** Profiles moved out of the "what to run" card into their own Launch page section (§5.9) with Save, Reload, Save as…, New…, Delete, Rename… and Set as default, an engine-pin checkbox, and a `•` for unsaved edits. Page edits are no longer committed on every toggle — see §5.9 decision 1. Verified by driving the running app through UI Automation: toggling safe mode raised the marker and enabled Reload; Reload restored the checkbox and cleared both; Save as… wrote a second profile with a fresh id, `IsBuiltIn` false and the page's menu pinned, leaving the built-in untouched; Delete removed it and left Chobby pinned as the default. Fixed during that pass: the marker showed on an untouched profile at startup, because the pickers default to their first entry where the profile stores null. |
-| 5–7 | Not started. |
+| 6 — Infolog | **Done.** `IInfologCatalog` over the three log locations, `IInfologParser` (streaming summary + filtered, capped line read), `IStartScriptRecovery` with the `_script.txt` fallback and unresolved-path handling, `TextDiff`, `ILaunchHistoryStore`, an Infolog page with severity colouring and severity/section/text filters, and a History page with replay and jump-to-log. Every marker in §5.8 was read out of this install's own logs, and the real-file tests parse them rather than fixtures. Verified live: a Chobby run was killed mid-boot, recovered from `data\_script.txt` (a `--menu` run logs no script line), imported as `chobby Quicksilver Remake 1.24.txt`, diffed as identical, and re-run — the engine logged `Loading StartScript from: …\_script.txt`, `Isolation Mode!`, and reached the game on Quicksilver Remake 1.24 with the `development` build the original log named. Fixed during that pass: two commands gated on `HasFile` were never notified and stayed disabled from startup, and pressing "Problems only" crashed the app outright — see the deviations below. |
+| 5, 7 | Not started. |
 
 ### Deviations from the plan as written
 
@@ -701,3 +759,53 @@ map thumbnails → springsettings editor.
 - **Container validation.** `ValidateOnBuild` is on, so a missing registration fails at
   startup instead of on the navigation that first needs it. Because that throws before
   the logger exists, `OnLaunched` writes a `startup-failure.log` as a last resort.
+- **§7 put the engine log under "Log", beside the app log.** It has its own **Infolog**
+  page instead. Picking a run out of 776 logs, reading its summary, recovering its start
+  script and filtering 484k lines is not a pane on another page, and the app log has
+  nothing to do with any of it beyond both being logs.
+- **§5.8 "any `[Error]` / `Exception` lines".** The engine writes severity into the
+  message (`Error:`, `Warning:`, `Fatal:`), not as a bracketed tag — there is no
+  `[Error]` in any log here. Severity is recovered from the leading word, in both forms
+  the engine uses: `Error:` is a label and is stripped from the displayed message, while
+  `Error in DrawScreen(): …` is part of the sentence and stays.
+- **Section tags come from the leading slot only.** The engine writes both
+  `[weapondefs.lua] Error: …` and `Fatal: [ExitSpringProcess] …`, so a tag can appear on
+  either side of the severity word. Only a tag *before* it counts as a section. Taking
+  the other kind would fill the section filter with function names —
+  `Error: [SetConfigInt] key … is deprecated` is the same shape and is not a log section.
+- **A filter change re-reads the file** rather than filtering a cached list. That is what
+  keeps a 42 MB log affordable: nothing is held but the matches. Typing is therefore
+  debounced, and each read cancels the one before it.
+
+### Three bugs worth recording
+
+The first two were found only by driving the running app; the third only by running
+the suite repeatedly.
+
+1. **Two commands were disabled from startup.** `Problems only` and `Copy shown` are
+   gated on a file being selected, but `SelectedFile` did not list them in its
+   `[NotifyCanExecuteChangedFor]` set, so their `CanExecute` was evaluated once — while
+   it was still null — and never again. Nothing fails; the buttons are simply grey
+   forever. Every command gated on a computed property has to be named by whatever
+   changes it.
+2. **Pressing "Problems only" killed the app.** It sets three filter properties, each of
+   which scheduled its own read, and each read cancelled *and disposed* the previous
+   `CancellationTokenSource`. The superseded read then evaluated `source.Token` inside a
+   dispatcher callback — and that property throws `ObjectDisposedException` once the
+   source is disposed, on the UI thread, where nothing catches it. The process vanished
+   with nothing in the log. Fixed by reading the token once, up front, and by not
+   disposing a superseded source at all: it holds no unmanaged resource, and a cancelled
+   token stays usable where a disposed one does not. The three property changes are now
+   also batched into a single read.
+3. **Launches were losing their exit code.** `history.json` is replaced by moving a
+   temporary over it, which needs delete access to the target — and a file written a
+   moment earlier is routinely held open for a moment by Defender or the search indexer,
+   so the move failed with `UnauthorizedAccessException`. Every other write in this app is
+   awaited by a caller who can report it; these two are not, because they come from a
+   launch and from a process-exit callback, so the failure was a run recorded without its
+   outcome and one line in the log. It reproduced about three times in four once a test
+   looked for the second write rather than merely for the file. Fixed with a short retry
+   around the move, and by opening the store's own reader with `FileShare.Delete` so a
+   History page load cannot block a launch being recorded. `ProfileStore` writes through
+   the same temp-and-move pattern without the retry; its callers await it and surface the
+   error, so it is left alone rather than changed on spec.

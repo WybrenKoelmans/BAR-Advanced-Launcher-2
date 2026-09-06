@@ -101,6 +101,10 @@ public partial class App : Application
         builder.Services.AddSingleton<IStartScriptFactory, StartScriptFactory>();
         builder.Services.AddSingleton<IProfileStore, ProfileStore>();
         builder.Services.AddSingleton<IEngineEnvironment, EngineEnvironment>();
+        builder.Services.AddSingleton<ILaunchHistoryStore, LaunchHistoryStore>();
+        builder.Services.AddSingleton<IInfologCatalog, InfologCatalog>();
+        builder.Services.AddSingleton<IInfologParser, InfologParser>();
+        builder.Services.AddSingleton<IStartScriptRecovery, StartScriptRecovery>();
         builder.Services.AddSingleton<ILaunchService, LaunchService>();
         builder.Services.AddSingleton<IInstallationContext, InstallationContext>();
         builder.Services.AddSingleton<IShellService, ShellService>();
@@ -114,6 +118,7 @@ public partial class App : Application
         builder.Services.AddSingleton<ScriptsViewModel>();
         builder.Services.AddSingleton<ContentViewModel>();
         builder.Services.AddSingleton<HistoryViewModel>();
+        builder.Services.AddSingleton<InfologViewModel>();
         builder.Services.AddSingleton<LogViewModel>();
         builder.Services.AddSingleton<SettingsViewModel>();
 

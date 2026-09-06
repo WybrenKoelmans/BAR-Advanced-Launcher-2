@@ -11,293 +11,371 @@
     mc:Ignorable="d"
     Loaded="OnLoaded">
 
-    <ScrollViewer>
-        <StackPanel Padding="24" Spacing="16">
+    <local:LaunchPageBase.Resources>
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style x:Key="HintTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Opacity" Value="0.6" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </local:LaunchPageBase.Resources>
 
-            <TextBlock Text="Launch" Style="{StaticResource TitleTextBlockStyle}" />
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-            <!-- Launch -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="12">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="Launch"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Command="{x:Bind ViewModel.LaunchCommand}" />
-                        <Button Content="Copy command line"
-                                Command="{x:Bind ViewModel.CopyCommandLineCommand}" />
-                    </StackPanel>
+        <!-- Scrollable content -->
+        <ScrollViewer Grid.Row="0" Padding="24,20,24,20" VerticalScrollBarVisibility="Auto">
+            <Grid x:Name="ContentGrid" ColumnSpacing="20" RowSpacing="20" SizeChanged="OnContentGridSizeChanged">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="MainColumn" Width="2*" />
+                    <ColumnDefinition x:Name="SidebarColumn" Width="*" MinWidth="260" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-                    <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
-                             Title="This will start and then fail"
-                             Message="{x:Bind ViewModel.LaunchWarning, Mode=OneWay}"
-                             Visibility="{x:Bind ViewModel.LaunchWarning, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+                <!-- Main column -->
+                <StackPanel x:Name="MainStack" Grid.Row="0" Grid.Column="0" Spacing="20">
 
-                    <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
-                             Title="Cannot launch"
-                             Message="{x:Bind ViewModel.LaunchProblem, Mode=OneWay}"
-                             Visibility="{x:Bind ViewModel.LaunchProblem, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+                    <TextBlock Text="Launch" Style="{StaticResource TitleTextBlockStyle}" />
 
-                    <TextBlock Text="{x:Bind ViewModel.CommandPreview, Mode=OneWay}"
-                               FontFamily="Consolas" TextWrapping="Wrap"
-                               IsTextSelectionEnabled="True" Opacity="0.75" />
-                </StackPanel>
-            </Border>
-            
-            <!-- Install header -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Installation" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <!-- Profile: the saved bundle of everything below, managed on its own -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
 
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                            <TextBlock Text="{x:Bind ViewModel.ProfileHeader, Mode=OneWay}"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Style="{StaticResource HintTextStyle}"
+                                       Text="A profile stores what to run and the run options below. Edits stay on the page until you save, so you can try a one-off run without changing the profile." />
 
-                        <TextBlock Text="{x:Bind ViewModel.InstallPath, Mode=OneWay}"
-                                   TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                                   VerticalAlignment="Center" FontFamily="Consolas" />
+                            <ComboBox ItemsSource="{x:Bind ViewModel.Profiles, Mode=OneWay}"
+                                      SelectedItem="{x:Bind ViewModel.SelectedProfile, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch"
+                                      PlaceholderText="No profiles">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="models:LaunchProfile">
+                                        <TextBlock Text="{x:Bind Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
 
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                            <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
-                            <Button Content="Change…" Command="{x:Bind ViewModel.ChangeInstallationCommand}" />
-                            <Button Content="Re-detect" Command="{x:Bind ViewModel.RefreshCommand}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Save"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Command="{x:Bind ViewModel.SaveProfileCommand}"
+                                        ToolTipService.ToolTip="Write the page back to this profile" />
+                                <Button Content="Reload"
+                                        Command="{x:Bind ViewModel.RevertProfileCommand}"
+                                        ToolTipService.ToolTip="Discard the page's edits and load this profile as saved" />
+                                <Button Content="Save as…"
+                                        Command="{x:Bind ViewModel.SaveProfileAsCommand}"
+                                        ToolTipService.ToolTip="Keep this profile as it is and store the page as a new one" />
+                                <Button Content="New…"
+                                        Command="{x:Bind ViewModel.NewProfileCommand}" />
+                                <Button Content="Delete"
+                                        Command="{x:Bind ViewModel.DeleteProfileCommand}" />
+                                <Button Content="More">
+                                    <Button.Flyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem Text="Rename…"
+                                                            Command="{x:Bind ViewModel.RenameProfileCommand}" />
+                                            <MenuFlyoutItem Text="Set as default"
+                                                            Command="{x:Bind ViewModel.SetDefaultProfileCommand}" />
+                                        </MenuFlyout>
+                                    </Button.Flyout>
+                                </Button>
+                            </StackPanel>
+
+                            <CheckBox Content="Pin the selected engine to this profile"
+                                      IsChecked="{x:Bind ViewModel.PinEngineToProfile, Mode=TwoWay}"
+                                      ToolTipService.ToolTip="Off lets the profile follow whichever engine the page has selected, which keeps it working after an engine upgrade. On is for a profile that means one specific build." />
+
+                            <TextBlock Text="{x:Bind ViewModel.ProfileStatus, Mode=OneWay}"
+                                       Style="{StaticResource HintTextStyle}" />
                         </StackPanel>
-                    </Grid>
+                    </Border>
 
-                    <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
-                             Title="No usable installation"
-                             Message="{x:Bind ViewModel.InstallProblem, Mode=OneWay}"
-                             Visibility="{x:Bind ViewModel.InstallProblem, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+                    <!-- What to run -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="What to run" Style="{StaticResource BodyStrongTextBlockStyle}" />
 
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="Install folder" Command="{x:Bind ViewModel.OpenInstallFolderCommand}" />
-                        <Button Content="data" Command="{x:Bind ViewModel.OpenDataFolderCommand}" />
-                        <Button Content="Engine folder" Command="{x:Bind ViewModel.OpenEngineFolderCommand}" />
-                        <Button Content="Script library" Command="{x:Bind ViewModel.OpenScriptLibraryCommand}" />
-                        <Button Content="infolog.txt" Command="{x:Bind ViewModel.OpenInfologCommand}" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+                            <Grid ColumnSpacing="16" RowSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
 
-            <!-- Profile: the saved bundle of everything below, managed on its own -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="12">
+                                <StackPanel Grid.Row="0" Grid.Column="0">
+                                    <TextBlock Text="Engine" Style="{StaticResource FieldLabelStyle}" />
+                                    <ComboBox ItemsSource="{x:Bind ViewModel.Engines, Mode=OneWay}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedEngine, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"
+                                              PlaceholderText="No engine builds found">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:EngineBuild">
+                                                <TextBlock Text="{x:Bind DisplayName}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
 
-                    <TextBlock Text="{x:Bind ViewModel.ProfileHeader, Mode=OneWay}"
-                               Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <TextBlock Text="A profile stores what to run and the run options below. Edits stay on the page until you save, so you can try a one-off run without changing the profile."
-                               Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                                <StackPanel Grid.Row="0" Grid.Column="1">
+                                    <TextBlock Text="Mode" Style="{StaticResource FieldLabelStyle}" />
+                                    <ComboBox ItemsSource="{x:Bind ViewModel.Modes}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch" />
+                                </StackPanel>
 
-                    <ComboBox ItemsSource="{x:Bind ViewModel.Profiles, Mode=OneWay}"
-                              SelectedItem="{x:Bind ViewModel.SelectedProfile, Mode=TwoWay}"
-                              HorizontalAlignment="Stretch"
-                              PlaceholderText="No profiles">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="models:LaunchProfile">
-                                <TextBlock Text="{x:Bind Name}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
+                                <StackPanel Grid.Row="1" Grid.Column="0">
+                                    <TextBlock Text="Menu (Chobby)" Style="{StaticResource FieldLabelStyle}" />
+                                    <ComboBox ItemsSource="{x:Bind ViewModel.Menus, Mode=OneWay}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedMenu, Mode=TwoWay}"
+                                              IsEnabled="{x:Bind ViewModel.MenuPickerEnabled, Mode=OneWay}"
+                                              HorizontalAlignment="Stretch"
+                                              PlaceholderText="No Chobby build in the archive cache">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:MenuArchive">
+                                                <TextBlock Text="{x:Bind Name}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="Save"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Command="{x:Bind ViewModel.SaveProfileCommand}"
-                                ToolTipService.ToolTip="Write the page back to this profile" />
-                        <Button Content="Reload"
-                                Command="{x:Bind ViewModel.RevertProfileCommand}"
-                                ToolTipService.ToolTip="Discard the page's edits and load this profile as saved" />
-                        <Button Content="Save as…"
-                                Command="{x:Bind ViewModel.SaveProfileAsCommand}"
-                                ToolTipService.ToolTip="Keep this profile as it is and store the page as a new one" />
-                        <Button Content="New…"
-                                Command="{x:Bind ViewModel.NewProfileCommand}" />
-                        <Button Content="Delete"
-                                Command="{x:Bind ViewModel.DeleteProfileCommand}" />
-                        <Button Content="More">
-                            <Button.Flyout>
-                                <MenuFlyout>
-                                    <MenuFlyoutItem Text="Rename…"
-                                                    Command="{x:Bind ViewModel.RenameProfileCommand}" />
-                                    <MenuFlyoutItem Text="Set as default"
-                                                    Command="{x:Bind ViewModel.SetDefaultProfileCommand}" />
-                                </MenuFlyout>
-                            </Button.Flyout>
-                        </Button>
-                    </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="1">
+                                    <TextBlock Text="Start script" Style="{StaticResource FieldLabelStyle}" />
+                                    <ComboBox ItemsSource="{x:Bind ViewModel.Scripts, Mode=OneWay}"
+                                              SelectedItem="{x:Bind ViewModel.SelectedScript, Mode=TwoWay}"
+                                              IsEnabled="{x:Bind ViewModel.ScriptPickerEnabled, Mode=OneWay}"
+                                              HorizontalAlignment="Stretch"
+                                              PlaceholderText="The script library is empty">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="services:StartScriptFile">
+                                                <TextBlock Text="{x:Bind DisplayName}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
 
-                    <CheckBox Content="Pin the selected engine to this profile"
-                              IsChecked="{x:Bind ViewModel.PinEngineToProfile, Mode=TwoWay}"
-                              ToolTipService.ToolTip="Off lets the profile follow whichever engine the page has selected, which keeps it working after an engine upgrade. On is for a profile that means one specific build." />
+                    <!-- Run options: engine switches, saved with the selected profile -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
 
-                    <TextBlock Text="{x:Bind ViewModel.ProfileStatus, Mode=OneWay}"
-                               Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
+                            <TextBlock Text="Run options" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Style="{StaticResource HintTextStyle}"
+                                       Text="Part of the profile, stored when you save it. Greyed-out switches are ones spring-dedicated.exe does not accept." />
 
-            <!-- What to run -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="12">
+                            <StackPanel Spacing="8">
+                                <CheckBox Content="Isolation (--isolation)"
+                                          IsChecked="{x:Bind ViewModel.UseIsolation, Mode=TwoWay}"
+                                          ToolTipService.ToolTip="Limits the games and maps scanner to this install, so an archive sitting in your Windows user profile cannot change what a run loads." />
 
-                    <TextBlock Text="What to run" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <CheckBox Content="Safe mode (--safemode)"
+                                          IsEnabled="{x:Bind ViewModel.SupportsClientOptions, Mode=OneWay}"
+                                          IsChecked="{x:Bind ViewModel.UseSafeMode, Mode=TwoWay}"
+                                          ToolTipService.ToolTip="Turns off many things known to cause problems. The first thing to try when a build will not start." />
 
-                    <TextBlock Text="Engine" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <ComboBox ItemsSource="{x:Bind ViewModel.Engines, Mode=OneWay}"
-                              SelectedItem="{x:Bind ViewModel.SelectedEngine, Mode=TwoWay}"
-                              HorizontalAlignment="Stretch"
-                              PlaceholderText="No engine builds found">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="models:EngineBuild">
-                                <TextBlock Text="{x:Bind DisplayName}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
+                                <CheckBox Content="No listening socket (--only-local)"
+                                          IsEnabled="{x:Bind ViewModel.SupportsClientOptions, Mode=OneWay}"
+                                          IsChecked="{x:Bind ViewModel.OnlyLocal, Mode=TwoWay}"
+                                          ToolTipService.ToolTip="Stops the engine opening a port, so a second instance can start while the first one is still up." />
 
-                    <TextBlock Text="Mode" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <ComboBox ItemsSource="{x:Bind ViewModel.Modes}"
-                              SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}"
-                              HorizontalAlignment="Stretch" />
+                                <CheckBox Content="Use the install's downloader settings (PRD_*)"
+                                          IsChecked="{x:Bind ViewModel.UseInstallEnvironment, Mode=TwoWay}"
+                                          ToolTipService.ToolTip="Copies env_variables from the install's data\config.json onto the run. Without them the engine's pr-downloader falls back to repos.springrts.com, which carries no Beyond All Reason content, and in-game downloads fail." />
+                            </StackPanel>
 
-                    <TextBlock Text="Menu (Chobby)" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <ComboBox ItemsSource="{x:Bind ViewModel.Menus, Mode=OneWay}"
-                              SelectedItem="{x:Bind ViewModel.SelectedMenu, Mode=TwoWay}"
-                              IsEnabled="{x:Bind ViewModel.MenuPickerEnabled, Mode=OneWay}"
-                              HorizontalAlignment="Stretch"
-                              PlaceholderText="No Chobby build in the archive cache">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="models:MenuArchive">
-                                <TextBlock Text="{x:Bind Name}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
+                            <StackPanel>
+                                <TextBlock Text="Window" Style="{StaticResource FieldLabelStyle}" />
+                                <ComboBox ItemsSource="{x:Bind ViewModel.WindowModes}"
+                                          SelectedItem="{x:Bind ViewModel.WindowMode, Mode=TwoWay}"
+                                          IsEnabled="{x:Bind ViewModel.SupportsClientOptions, Mode=OneWay}"
+                                          HorizontalAlignment="Stretch"
+                                          ToolTipService.ToolTip="Default passes neither switch and lets springsettings.cfg decide." />
+                            </StackPanel>
 
-                    <TextBlock Text="Start script" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <ComboBox ItemsSource="{x:Bind ViewModel.Scripts, Mode=OneWay}"
-                              SelectedItem="{x:Bind ViewModel.SelectedScript, Mode=TwoWay}"
-                              IsEnabled="{x:Bind ViewModel.ScriptPickerEnabled, Mode=OneWay}"
-                              HorizontalAlignment="Stretch"
-                              PlaceholderText="The script library is empty">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="services:StartScriptFile">
-                                <TextBlock Text="{x:Bind DisplayName}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-
-                </StackPanel>
-            </Border>
-
-            <!-- Run options: engine switches, saved with the selected profile -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="12">
-
-                    <TextBlock Text="Run options" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <TextBlock Text="Part of the profile, stored when you save it. Greyed-out switches are ones spring-dedicated.exe does not accept."
-                               Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-
-                    <CheckBox Content="Isolation (--isolation)"
-                              IsChecked="{x:Bind ViewModel.UseIsolation, Mode=TwoWay}"
-                              ToolTipService.ToolTip="Limits the games and maps scanner to this install, so an archive sitting in your Windows user profile cannot change what a run loads." />
-
-                    <CheckBox Content="Safe mode (--safemode)"
-                              IsEnabled="{x:Bind ViewModel.SupportsClientOptions, Mode=OneWay}"
-                              IsChecked="{x:Bind ViewModel.UseSafeMode, Mode=TwoWay}"
-                              ToolTipService.ToolTip="Turns off many things known to cause problems. The first thing to try when a build will not start." />
-
-                    <CheckBox Content="No listening socket (--only-local)"
-                              IsEnabled="{x:Bind ViewModel.SupportsClientOptions, Mode=OneWay}"
-                              IsChecked="{x:Bind ViewModel.OnlyLocal, Mode=TwoWay}"
-                              ToolTipService.ToolTip="Stops the engine opening a port, so a second instance can start while the first one is still up." />
-                    <CheckBox Content="Use the install's downloader settings (PRD_*)"
-                              IsChecked="{x:Bind ViewModel.UseInstallEnvironment, Mode=TwoWay}"
-                              ToolTipService.ToolTip="Copies env_variables from the install's data\config.json onto the run. Without them the engine's pr-downloader falls back to repos.springrts.com, which carries no Beyond All Reason content, and in-game downloads fail." />
-
-                    <TextBlock Text="Window" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <ComboBox ItemsSource="{x:Bind ViewModel.WindowModes}"
-                              SelectedItem="{x:Bind ViewModel.WindowMode, Mode=TwoWay}"
-                              IsEnabled="{x:Bind ViewModel.SupportsClientOptions, Mode=OneWay}"
-                              HorizontalAlignment="Stretch"
-                              ToolTipService.ToolTip="Default passes neither switch and lets springsettings.cfg decide." />
-
-                    <TextBlock Text="Write directory (--write-dir)" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Text="{x:Bind ViewModel.WriteDirectoryOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="Blank uses the install's data folder"
-                                 FontFamily="Consolas"
-                                 LostFocus="OnRunOptionLostFocus" />
-                        <Button Grid.Column="1" Content="Browse…"
-                                Command="{x:Bind ViewModel.BrowseWriteDirectoryCommand}" />
-                    </Grid>
-                    <TextBlock Text="{x:Bind ViewModel.WriteDirectoryEffective, Mode=OneWay}"
-                               Opacity="0.6" FontSize="12" TextWrapping="Wrap"
-                               IsTextSelectionEnabled="True" />
-
-                    <TextBlock Text="Config file (--config)" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Text="{x:Bind ViewModel.ConfigFilePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="Blank uses the write directory's own springsettings.cfg"
-                                 FontFamily="Consolas"
-                                 LostFocus="OnRunOptionLostFocus" />
-                        <Button Grid.Column="1" Content="Browse…"
-                                Command="{x:Bind ViewModel.BrowseConfigFileCommand}" />
-                        <Button Grid.Column="2" Content="Clear paths"
-                                Command="{x:Bind ViewModel.ClearPathOverridesCommand}" />
-                    </Grid>
-
-                    <TextBlock Text="Extra arguments" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <TextBox Text="{x:Bind ViewModel.ExtraArguments, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             PlaceholderText="Appended verbatim, quotes honoured"
-                             FontFamily="Consolas"
-                             LostFocus="OnRunOptionLostFocus" />
-                </StackPanel>
-            </Border>
-
-
-            <!-- Running instances -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="Launched this session" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.Instances, Mode=OneWay}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="services:RunningInstance">
-                                <Grid ColumnSpacing="12" Padding="0,6">
+                            <StackPanel>
+                                <TextBlock Text="Write directory (--write-dir)" Style="{StaticResource FieldLabelStyle}" />
+                                <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{x:Bind DisplayName}" />
-                                        <!-- OneTime: the whole collection is rebuilt when an instance starts or exits. -->
-                                        <TextBlock Text="{x:Bind StatusText}" Opacity="0.6" FontSize="12" />
-                                    </StackPanel>
+                                    <TextBox Text="{x:Bind ViewModel.WriteDirectoryOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PlaceholderText="Blank uses the install's data folder"
+                                             FontFamily="Consolas"
+                                             LostFocus="OnRunOptionLostFocus" />
+                                    <Button Grid.Column="1" Content="Browse…"
+                                            Command="{x:Bind ViewModel.BrowseWriteDirectoryCommand}" />
                                 </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                                <TextBlock Text="{x:Bind ViewModel.WriteDirectoryEffective, Mode=OneWay}"
+                                           Style="{StaticResource HintTextStyle}"
+                                           Margin="0,4,0,0"
+                                           IsTextSelectionEnabled="True" />
+                            </StackPanel>
+
+                            <StackPanel>
+                                <TextBlock Text="Config file (--config)" Style="{StaticResource FieldLabelStyle}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{x:Bind ViewModel.ConfigFilePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PlaceholderText="Blank uses the write directory's own springsettings.cfg"
+                                             FontFamily="Consolas"
+                                             LostFocus="OnRunOptionLostFocus" />
+                                    <Button Grid.Column="1" Content="Browse…"
+                                            Command="{x:Bind ViewModel.BrowseConfigFileCommand}" />
+                                    <Button Grid.Column="2" Content="Clear paths"
+                                            Command="{x:Bind ViewModel.ClearPathOverridesCommand}" />
+                                </Grid>
+                            </StackPanel>
+
+                            <StackPanel>
+                                <TextBlock Text="Extra arguments" Style="{StaticResource FieldLabelStyle}" />
+                                <TextBox Text="{x:Bind ViewModel.ExtraArguments, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PlaceholderText="Appended verbatim, quotes honoured"
+                                         FontFamily="Consolas"
+                                         LostFocus="OnRunOptionLostFocus" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-            </Border>
-        </StackPanel>
-    </ScrollViewer>
+
+                <!-- Sidebar -->
+                <StackPanel x:Name="SidebarStack" Grid.Row="0" Grid.Column="1" Spacing="20">
+
+                    <!-- Installation -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Installation" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <ProgressRing Grid.Column="1" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="18" Height="18" />
+                            </Grid>
+
+                            <TextBlock Text="{x:Bind ViewModel.InstallPath, Mode=OneWay}"
+                                       TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                       FontFamily="Consolas" FontSize="12" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Change…" Command="{x:Bind ViewModel.ChangeInstallationCommand}" />
+                                <Button Content="Re-detect" Command="{x:Bind ViewModel.RefreshCommand}" />
+                            </StackPanel>
+
+                            <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
+                                     Title="No usable installation"
+                                     Message="{x:Bind ViewModel.InstallProblem, Mode=OneWay}"
+                                     Visibility="{x:Bind ViewModel.InstallProblem, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                            <StackPanel Spacing="4">
+                                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                        Content="Install folder" Command="{x:Bind ViewModel.OpenInstallFolderCommand}" />
+                                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                        Content="data" Command="{x:Bind ViewModel.OpenDataFolderCommand}" />
+                                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                        Content="Engine folder" Command="{x:Bind ViewModel.OpenEngineFolderCommand}" />
+                                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                        Content="Script library" Command="{x:Bind ViewModel.OpenScriptLibraryCommand}" />
+                                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                        Content="infolog.txt" Command="{x:Bind ViewModel.OpenInfologCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Running instances -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Launched this session" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.Instances, Mode=OneWay}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="services:RunningInstance">
+                                        <StackPanel Padding="0,6" BorderThickness="0,0,0,1"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                                            <TextBlock Text="{x:Bind DisplayName}" TextWrapping="Wrap" />
+                                            <!-- OneTime: the whole collection is rebuilt when an instance starts or exits. -->
+                                            <TextBlock Text="{x:Bind StatusText}" Opacity="0.6" FontSize="12" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+
+        <!-- Sticky launch bar: the primary action stays reachable regardless of scroll position -->
+        <Border Grid.Row="1"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="24,14">
+            <StackPanel Spacing="10">
+
+                <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
+                         Title="This will start and then fail"
+                         Message="{x:Bind ViewModel.LaunchWarning, Mode=OneWay}"
+                         Visibility="{x:Bind ViewModel.LaunchWarning, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
+                         Title="Cannot launch"
+                         Message="{x:Bind ViewModel.LaunchProblem, Mode=OneWay}"
+                         Visibility="{x:Bind ViewModel.LaunchProblem, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Command="{x:Bind ViewModel.LaunchCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE768;" FontSize="14" />
+                            <TextBlock Text="Launch" />
+                        </StackPanel>
+                    </Button>
+                    <Button Grid.Column="1" Content="Copy command line" Command="{x:Bind ViewModel.CopyCommandLineCommand}" />
+
+                    <ScrollViewer Grid.Column="2" MaxHeight="40" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <TextBlock Text="{x:Bind ViewModel.CommandPreview, Mode=OneWay}"
+                                   FontFamily="Consolas" FontSize="12" TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True" Opacity="0.75"
+                                   VerticalAlignment="Center" />
+                    </ScrollViewer>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
 </local:LaunchPageBase>
