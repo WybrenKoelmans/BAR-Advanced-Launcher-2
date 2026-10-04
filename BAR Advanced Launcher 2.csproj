@@ -17,6 +17,14 @@
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
+    <!--
+      Bundle the Windows App SDK runtime instead of depending on it being installed. This
+      also turns off the bootstrap auto-initializer, whose default is to pop a "please
+      install the Windows App Runtime" dialog on any machine without it: end users get a
+      dialog instead of the app, and a CI runner hangs forever on it as soon as a test
+      touches an app type.
+    -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>

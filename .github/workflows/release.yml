@@ -13,6 +13,7 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -22,11 +23,12 @@ jobs:
 
       # Live tests skip themselves unless BARLAUNCHER_LIVE=1, so this is safe on a runner.
       - name: Test
-        run: dotnet test "Tests/BAR Advanced Launcher 2.Tests.csproj" -p:Platform=x64 -c Release
+        run: dotnet test "Tests/BAR Advanced Launcher 2.Tests.csproj" -p:Platform=x64 -c Release --blame-hang --blame-hang-timeout 5m
 
   build:
     needs: test
     runs-on: windows-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: true
       matrix:
@@ -73,6 +75,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:
