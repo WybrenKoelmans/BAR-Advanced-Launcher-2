@@ -102,6 +102,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
@@ -137,14 +138,35 @@
                     </StackPanel>
                 </Grid>
 
-                <InfoBar Grid.Row="1"
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="16">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Map" VerticalAlignment="Center" Opacity="0.7" />
+                        <ComboBox ItemsSource="{x:Bind ViewModel.MapNames}"
+                                  SelectedItem="{x:Bind ViewModel.QuickMapName, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                                  PlaceholderText="(none)"
+                                  MinWidth="220"
+                                  ToolTipService.ToolTip="Quick-edit the [game] mapname field" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Game" VerticalAlignment="Center" Opacity="0.7" />
+                        <ComboBox ItemsSource="{x:Bind ViewModel.GameNames}"
+                                  SelectedItem="{x:Bind ViewModel.QuickGameName, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                                  PlaceholderText="(none)"
+                                  MinWidth="220"
+                                  ToolTipService.ToolTip="Quick-edit the [game] gametype field" />
+                    </StackPanel>
+                </StackPanel>
+
+                <InfoBar Grid.Row="2"
                          Severity="Error"
                          IsOpen="{x:Bind ViewModel.HasParseError, Mode=OneWay}"
                          IsClosable="False"
                          Title="This script does not parse"
                          Message="{x:Bind ViewModel.ParseError, Mode=OneWay}" />
 
-                <TextBox Grid.Row="2"
+                <TextBox Grid.Row="3"
                          Text="{x:Bind ViewModel.EditorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
                          PlaceholderText="Select a script, or create one from a template."
@@ -158,7 +180,7 @@
                          ScrollViewer.VerticalScrollMode="Enabled"
                          ScrollViewer.HorizontalScrollMode="Enabled" />
 
-                <TextBlock Grid.Row="3"
+                <TextBlock Grid.Row="4"
                            Text="{x:Bind ViewModel.SelectedScriptPath, Mode=OneWay}"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            IsTextSelectionEnabled="True"

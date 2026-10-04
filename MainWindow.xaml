@@ -16,8 +16,7 @@
     <NavigationView x:Name="Nav"
                     IsBackButtonVisible="Collapsed"
                     IsSettingsVisible="False"
-                    PaneDisplayMode="Left"
-                    OpenPaneLength="220"
+                    PaneDisplayMode="Top"
                     SelectionChanged="OnSelectionChanged">
 
         <NavigationView.MenuItems>

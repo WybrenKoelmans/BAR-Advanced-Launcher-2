@@ -1,0 +1,90 @@
+name: Release
+
+# Pushing a tag like v1.2.3 builds the app for every platform, zips each build and
+# attaches the zips to a GitHub release for that tag.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Live tests skip themselves unless BARLAUNCHER_LIVE=1, so this is safe on a runner.
+      - name: Test
+        run: dotnet test "Tests/BAR Advanced Launcher 2.Tests.csproj" -p:Platform=x64 -c Release
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        platform: [x64, x86, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # v1.2.3 -> 1.2.3 (a "-rc1" style suffix is kept as the informational version).
+      - name: Derive version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $version = $tag -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish
+        run: >
+          dotnet publish "BAR Advanced Launcher 2.csproj"
+          -c Release
+          -p:Platform=${{ matrix.platform }}
+          -r win-${{ matrix.platform }}
+          --self-contained true
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish/${{ matrix.platform }}
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "publish/${{ matrix.platform }}/*" `
+            -DestinationPath "dist/BAR-Advanced-Launcher-2-${{ steps.version.outputs.version }}-win-${{ matrix.platform }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-${{ matrix.platform }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}" dist/*.zip
+          --repo "${{ github.repository }}"
+          --title "${{ github.ref_name }}"
+          --generate-notes
+          ${{ contains(github.ref_name, '-') && '--prerelease' || '' }}

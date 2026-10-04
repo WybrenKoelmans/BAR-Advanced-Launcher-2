@@ -25,6 +25,7 @@ public sealed partial class ScriptsViewModel : ObservableObject
     private readonly IStartScriptFactory _factory;
     private readonly ILaunchService _launcher;
     private readonly IInstallationContext _installation;
+    private readonly IArchiveCatalog _catalog;
     private readonly ISettingsService _settings;
     private readonly IShellService _shell;
     private readonly IDialogService _dialogs;
@@ -38,6 +39,9 @@ public sealed partial class ScriptsViewModel : ObservableObject
     /// <summary>Suppresses the dirty flag while the editor is being filled in code.</summary>
     private bool _isPopulatingEditor;
 
+    /// <summary>Suppresses the quick-edit write-back while Map/Game are synced from the parsed script.</summary>
+    private bool _isPopulatingQuickFields;
+
     public ScriptsViewModel(
         ILogger<ScriptsViewModel> logger,
         IStartScriptStore store,
@@ -45,6 +49,7 @@ public sealed partial class ScriptsViewModel : ObservableObject
         IStartScriptFactory factory,
         ILaunchService launcher,
         IInstallationContext installation,
+        IArchiveCatalog catalog,
         ISettingsService settings,
         IShellService shell,
         IDialogService dialogs)
@@ -55,6 +60,7 @@ public sealed partial class ScriptsViewModel : ObservableObject
         _factory = factory;
         _launcher = launcher;
         _installation = installation;
+        _catalog = catalog;
         _settings = settings;
         _shell = shell;
         _dialogs = dialogs;
@@ -86,6 +92,20 @@ public sealed partial class ScriptsViewModel : ObservableObject
     public ObservableCollection<StartScriptFile> Scripts { get; } = new();
 
     public ObservableCollection<StartScriptTemplate> Templates { get; } = new();
+
+    /// <summary>Map archive names for the quick-edit dropdown, from the active install's catalog.</summary>
+    public ObservableCollection<string> MapNames { get; } = new();
+
+    /// <summary>Game archive names for the quick-edit dropdown, from the active install's catalog.</summary>
+    public ObservableCollection<string> GameNames { get; } = new();
+
+    /// <summary>Quick-edit view of the <c>[game] mapname</c> field, kept in sync with <see cref="EditorText"/>.</summary>
+    [ObservableProperty]
+    public partial string? QuickMapName { get; set; }
+
+    /// <summary>Quick-edit view of the <c>[game] gametype</c> field, kept in sync with <see cref="EditorText"/>.</summary>
+    [ObservableProperty]
+    public partial string? QuickGameName { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DuplicateCommand))]
@@ -150,6 +170,13 @@ public sealed partial class ScriptsViewModel : ObservableObject
     {
         try
         {
+            if (_installation.Current is { } installation)
+            {
+                await _catalog.LoadAsync(installation);
+            }
+
+            SyncQuickEditSources();
+
             IReadOnlyList<StartScriptFile> scripts = await _store.ListAsync();
             string? previous = SelectedScript?.FileName;
 
@@ -186,6 +213,26 @@ public sealed partial class ScriptsViewModel : ObservableObject
         foreach (StartScriptFile script in scripts)
         {
             Scripts.Add(script);
+        }
+    }
+
+    /// <summary>
+    /// Refills the quick-edit dropdown sources from the archive catalog. Not diffed like
+    /// <see cref="SyncScripts"/>: these are plain strings, so rebuilding is cheap and the
+    /// dropdowns have no selection to preserve across a refresh.
+    /// </summary>
+    private void SyncQuickEditSources()
+    {
+        MapNames.Clear();
+        foreach (string name in _catalog.Index.Maps.Select(m => m.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+        {
+            MapNames.Add(name);
+        }
+
+        GameNames.Clear();
+        foreach (string name in _catalog.Index.Games.Select(g => g.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+        {
+            GameNames.Add(name);
         }
     }
 
@@ -252,11 +299,60 @@ public sealed partial class ScriptsViewModel : ObservableObject
         if (SelectedScript is null && EditorText.Length == 0)
         {
             ParseError = string.Empty;
+            SyncQuickFields(null);
             return;
         }
 
         StartScriptParseResult result = _serializer.Parse(EditorText);
         ParseError = result.Success ? string.Empty : result.Error!.ToString();
+        SyncQuickFields(result.Success ? result.Document : null);
+    }
+
+    /// <summary>
+    /// Reflects the parsed script's Map/Game into the quick-edit dropdowns. Guarded so
+    /// that this readback does not loop back into <see cref="ApplyQuickField"/>.
+    /// </summary>
+    private void SyncQuickFields(StartScriptDocument? document)
+    {
+        _isPopulatingQuickFields = true;
+
+        try
+        {
+            var model = document is null ? null : new StartScriptModel(document);
+            QuickMapName = model?.MapName;
+            QuickGameName = model?.GameType;
+        }
+        finally
+        {
+            _isPopulatingQuickFields = false;
+        }
+    }
+
+    partial void OnQuickMapNameChanged(string? value) => ApplyQuickField(model => model.MapName = value);
+
+    partial void OnQuickGameNameChanged(string? value) => ApplyQuickField(model => model.GameType = value);
+
+    /// <summary>
+    /// Writes a Map/Game dropdown selection back into <see cref="EditorText"/> by round
+    /// tripping it through the parser, so the rest of the script survives untouched.
+    /// </summary>
+    private void ApplyQuickField(Action<StartScriptModel> apply)
+    {
+        if (_isPopulatingQuickFields || SelectedScript is null)
+        {
+            return;
+        }
+
+        StartScriptParseResult result = _serializer.Parse(EditorText);
+
+        if (!result.Success)
+        {
+            Status = "Cannot quick-edit: this script does not parse.";
+            return;
+        }
+
+        apply(new StartScriptModel(result.Document));
+        EditorText = _serializer.Write(result.Document);
     }
 
     // ---- file operations ------------------------------------------------------
